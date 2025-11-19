@@ -150,8 +150,8 @@ def main():
     parser.add_argument("--model", type=str, default="BAAI/bge-m3")
     parser.add_argument("--out", type=str, default="bge-m3-finetuned")
     parser.add_argument("--batch", type=int, default=16)
-    parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--lr", type=float, default=1e-4)
 
     args = parser.parse_args()
 
