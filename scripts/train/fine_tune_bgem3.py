@@ -8,6 +8,8 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from sentence_transformers import SentenceTransformer, InputExample, losses
 
+os.environ["WANDB_DISABLED"] = "true"
+
 
 def load_train_data(path: str):
     data = []
