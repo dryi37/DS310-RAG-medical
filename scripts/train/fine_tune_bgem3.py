@@ -115,10 +115,10 @@ def train(model_name, train_path, val_path, out_dir, batch, epochs, lr):
         model.fit(
             train_objectives=[(train_loader, train_loss)],
             epochs=1,
-            warmup_ratio=0.1,
-            scheduler="warmupcosine",  # SOTA-style schedule
+            # warmup_ratio=0.1,
+            scheduler="warmupcosine", 
             optimizer_params={"lr": lr},
-            use_amp=True,               # FP16 for 12GB GPU
+            use_amp=True,         
             show_progress_bar=True,
         )
 
