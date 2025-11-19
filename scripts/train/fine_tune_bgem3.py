@@ -102,7 +102,7 @@ def train(model_name, train_path, val_path, out_dir, batch, epochs, lr):
     train_loss = losses.MultipleNegativesRankingLoss(model)
 
     # Load validation data
-    print("Loading validation data...")
+    print("Loading validation data")
     val_data = load_val_data(val_path)
     print(f"Val samples: {len(val_data)}")
 
@@ -140,9 +140,9 @@ def train(model_name, train_path, val_path, out_dir, batch, epochs, lr):
         if mrr > best_mrr:
             best_mrr = mrr
             model.save(best_dir)
-            print(f"[INFO] New best model saved at {best_dir} (MRR={best_mrr:.4f})")
+            print(f"[INFO] Best model saved (MRR={best_mrr:.4f})")
 
-    print(f"Training complete. Best MRR on val = {best_mrr:.4f}")
+    print(f"Best MRR = {best_mrr:.4f}")
 
 
 def main():
@@ -152,7 +152,7 @@ def main():
     parser.add_argument("--model", type=str, default="BAAI/bge-base-en-v1.5")
     parser.add_argument("--out", type=str, default="bge-base-en-v1.5-finetuned")
     parser.add_argument("--batch", type=int, default=16)
-    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--epochs", type=int, default=8)
     parser.add_argument("--lr", type=float, default=1e-4)
 
     args = parser.parse_args()
