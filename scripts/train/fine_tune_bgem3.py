@@ -149,9 +149,9 @@ def main():
     parser = argparse.ArgumentParser(description="Fine-tune BGE-M3 retriever with val eval")
     parser.add_argument("--train", type=str, required=True)
     parser.add_argument("--val", type=str, required=True)
-    parser.add_argument("--model", type=str, default="BAAI/bge-m3")
+    parser.add_argument("--model", type=str, default="BAAI/bge-base-en-v1.5")
     parser.add_argument("--out", type=str, default="bge-m3-finetuned")
-    parser.add_argument("--batch", type=int, default=16)
+    parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=1e-4)
 
