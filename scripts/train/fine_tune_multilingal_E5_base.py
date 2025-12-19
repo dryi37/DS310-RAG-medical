@@ -182,7 +182,7 @@ def main():
     parser.add_argument("--val", type=str, required=True, help="val JSONL with question/positive")
     parser.add_argument("--model", type=str, default="intfloat/multilingual-e5-small")
     parser.add_argument("--out", type=str, default="multilingual-e5-base-triplet-sample")
-    parser.add_argument("--batch", type=int, default=16)
+    parser.add_argument("--batch", type=int, default=12)
     parser.add_argument("--epochs", type=int, default=8)
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--seed", type=int, default=42)
