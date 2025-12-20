@@ -4,6 +4,11 @@ import json
 import random
 from typing import List, Dict, Any, Tuple
 
+# (Quan trọng) tránh transformers import tensorflow/flax (đỡ lỗi numpy/matplotlib)
+os.environ["TRANSFORMERS_NO_TF"] = "1"
+os.environ["TRANSFORMERS_NO_FLAX"] = "1"
+os.environ["WANDB_DISABLED"] = "true"
+
 import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
@@ -17,8 +22,6 @@ from transformers import (
     set_seed,
 )
 from sentence_transformers import SentenceTransformer
-
-os.environ["WANDB_DISABLED"] = "true"
 
 
 def read_jsonl(path: str) -> List[Dict[str, Any]]:
@@ -42,9 +45,9 @@ def norm(s: str) -> str:
 @torch.no_grad()
 def mine_hard_negatives_ignore_field(
     items: List[Dict[str, Any]],
-    retriever_name: str = "intfloat/e5-small-v2",
+    retriever_name: str,
     neg_per_pos: int = 4,
-    mine_top: int = 50,          # search depth (top candidates to consider)
+    mine_top: int = 50,
     pool_max: int = 200000,
     encode_bs: int = 64,
     device: str = "cuda",
@@ -56,10 +59,10 @@ def mine_hard_negatives_ignore_field(
     """
     rng = random.Random(seed)
 
-    # Pool = positives from items (optionally capped)
     positives = [norm(it.get("positive", "")) for it in items]
     positives = [p for p in positives if p]
 
+    # cap pool if needed
     if len(positives) > pool_max:
         idxs = list(range(len(positives)))
         rng.shuffle(idxs)
@@ -70,17 +73,14 @@ def mine_hard_negatives_ignore_field(
 
     item_pos = [norm(it.get("positive", "")) for it in items]
 
-    retriever = SentenceTransformer(
-        retriever_name,
-        device=device
-    )
+    retriever = SentenceTransformer(retriever_name, device=device)
 
-    # E5 prefix
+    # E5 prefix (OK cho e5; nếu retriever khác e5 thì vẫn thường ổn)
     queries = ["query: " + norm(it.get("question", "")) for it in items]
     passages = ["passage: " + p for p in positives_pool]
 
-    q_emb = retriever.encode(queries, convert_to_tensor=True, batch_size=encode_bs)
-    p_emb = retriever.encode(passages, convert_to_tensor=True, batch_size=encode_bs)
+    q_emb = retriever.encode(queries, convert_to_tensor=True, batch_size=encode_bs, show_progress_bar=True)
+    p_emb = retriever.encode(passages, convert_to_tensor=True, batch_size=encode_bs, show_progress_bar=True)
 
     q_emb = F.normalize(q_emb, p=2, dim=1)
     p_emb = F.normalize(p_emb, p=2, dim=1)
@@ -98,8 +98,9 @@ def mine_hard_negatives_ignore_field(
         ranked = torch.argsort(sims[i], descending=True).tolist()
 
         chosen = []
-        # look into top `mine_top` first (hard-ish). If not enough, continue scanning.
-        scan_list = ranked[:max(mine_top, neg_per_pos * 5)]  # safety depth
+        scan_depth = max(mine_top, neg_per_pos * 5)
+        scan_list = ranked[:scan_depth]
+
         for j in scan_list:
             cand = positives_pool[j]
             if cand and cand != pos:
@@ -107,9 +108,8 @@ def mine_hard_negatives_ignore_field(
             if len(chosen) >= neg_per_pos:
                 break
 
-        # If still not enough (rare), fallback deeper
         if len(chosen) < neg_per_pos:
-            for j in ranked[len(scan_list):]:
+            for j in ranked[scan_depth:]:
                 cand = positives_pool[j]
                 if cand and cand != pos:
                     chosen.append(cand)
@@ -142,7 +142,9 @@ class RerankBinaryDataset(Dataset):
             if not q or not pos:
                 continue
 
+            # positive
             self.examples.append((q, pos, 1.0))
+            # negatives
             for neg in negs:
                 if neg:
                     self.examples.append((q, neg, 0.0))
@@ -153,7 +155,7 @@ class RerankBinaryDataset(Dataset):
     def __getitem__(self, idx):
         q, p, y = self.examples[idx]
         enc = self.tok(q, p, truncation=True, max_length=self.max_length)
-        enc["labels"] = float(y)
+        enc["labels"] = torch.tensor(y, dtype=torch.float32)
         return enc
 
 
@@ -203,11 +205,12 @@ def evaluate_mrr_recall(
                 padding=True,
                 return_tensors="pt",
             ).to(device)
+
             out = model(**enc)
             scores.extend(out.logits.squeeze(-1).float().cpu().tolist())
 
         ranked = sorted(range(len(cands)), key=lambda i: scores[i], reverse=True)
-        gold_rank = ranked.index(0)
+        gold_rank = ranked.index(0)  # pos ở index 0
         total += 1
 
         for k in ks:
@@ -240,6 +243,7 @@ def main():
     parser.add_argument("--max_length", type=int, default=256)
     parser.add_argument("--neg_per_pos", type=int, default=4)
     parser.add_argument("--mine_top", type=int, default=50)
+    parser.add_argument("--encode_bs", type=int, default=64)
 
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
@@ -253,22 +257,27 @@ def main():
     train_items = read_jsonl(args.train)
     val_items = read_jsonl(args.val)
 
+    print(f"[INFO] train_items={len(train_items)} | val_items={len(val_items)}")
+
     print("[INFO] Mining hard negatives for TRAIN (ignoring dataset negatives)...")
     train_negs = mine_hard_negatives_ignore_field(
         train_items,
         retriever_name=args.retriever,
         neg_per_pos=args.neg_per_pos,
         mine_top=args.mine_top,
+        encode_bs=args.encode_bs,
         device=device,
         seed=args.seed,
     )
 
     print("[INFO] Mining hard negatives for VAL (ignoring dataset negatives)...")
+    # eval nên vừa phải để nhanh (không auto 10 nếu bạn không cần)
     val_negs = mine_hard_negatives_ignore_field(
         val_items,
         retriever_name=args.retriever,
-        neg_per_pos=max(10, args.neg_per_pos),
+        neg_per_pos=args.neg_per_pos,
         mine_top=max(args.mine_top, 100),
+        encode_bs=args.encode_bs,
         device=device,
         seed=args.seed + 999,
     )
@@ -277,40 +286,43 @@ def main():
     model = AutoModelForSequenceClassification.from_pretrained(args.reranker, num_labels=1).to(device)
 
     train_ds = RerankBinaryDataset(train_items, train_negs, tokenizer, max_length=args.max_length)
-    val_ds = RerankBinaryDataset(val_items, val_negs, tokenizer, max_length=args.max_length)
+
+    print(f"[INFO] train_pairs={len(train_ds)} (≈ train_items*(1+neg_per_pos), after filtering)")
+    steps_per_epoch = (len(train_ds) + args.batch - 1) // args.batch
+    steps_per_epoch = (steps_per_epoch + args.grad_accum - 1) // args.grad_accum
+    print(f"[INFO] approx_steps_per_epoch={steps_per_epoch} | batch={args.batch} | grad_accum={args.grad_accum}")
 
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
+    # Train đúng 1 epoch mỗi lần trainer.train()
     training_args = TrainingArguments(
         output_dir=args.out,
-        num_train_epochs=args.epochs,
+        num_train_epochs=1,
         learning_rate=args.lr,
         per_device_train_batch_size=args.batch,
-        per_device_eval_batch_size=args.batch,
         gradient_accumulation_steps=args.grad_accum,
-        evaluation_strategy="epoch",
-        save_strategy="epoch",
-        save_total_limit=2,
-        logging_steps=50,              # sẽ log loss
+        logging_steps=50,
         logging_strategy="steps",
         fp16=(args.fp16 and device == "cuda"),
         report_to=[],
-    )
-
-    trainer = RerankTrainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_ds,
-        eval_dataset=val_ds,  # eval loss (tham khảo)
-        tokenizer=tokenizer,
-        data_collator=data_collator,
+        evaluation_strategy="no",
+        save_strategy="no",
     )
 
     best_mrr = -1.0
     best_dir = os.path.join(args.out, "best_model")
     os.makedirs(best_dir, exist_ok=True)
 
+    trainer = RerankTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_ds,
+        tokenizer=tokenizer,
+        data_collator=data_collator,
+    )
+
     for ep in range(args.epochs):
+        print(f"\n===== EPOCH {ep+1}/{args.epochs} =====")
         trainer.train()
 
         recall, mrr = evaluate_mrr_recall(
@@ -323,10 +335,8 @@ def main():
             ks=(5, 10),
         )
         print(
-            f"[VAL] epoch={ep+1} "
-            f"recall@5={recall['recall@5']:.4f} "
-            f"recall@10={recall['recall@10']:.4f} "
-            f"MRR={mrr:.4f}"
+            f"[VAL] epoch={ep+1} recall@5={recall['recall@5']:.4f} "
+            f"recall@10={recall['recall@10']:.4f} MRR={mrr:.4f}"
         )
 
         if mrr > best_mrr:
@@ -335,7 +345,7 @@ def main():
             tokenizer.save_pretrained(best_dir)
             print(f"[INFO] Saved best_model to {best_dir} (MRR={best_mrr:.4f})")
 
-    print(f"Best MRR = {best_mrr:.4f}")
+    print(f"\nBest MRR = {best_mrr:.4f}")
 
 
 if __name__ == "__main__":
