@@ -152,7 +152,7 @@ def main():
     parser.add_argument("--model", type=str, default="BAAI/bge-base-en-v1.5")
     parser.add_argument("--out", type=str, default="bge-base-en-v1.5-finetuned")
     parser.add_argument("--batch", type=int, default=16)
-    parser.add_argument("--epochs", type=int, default=8)
+    parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=1e-4)
 
     args = parser.parse_args()
