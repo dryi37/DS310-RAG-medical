@@ -5,4 +5,4 @@ data/
 *.ipynb
 
 # checkpoints
-checkpoints/bge_base_en/best_model.zip
+checkpoints/
