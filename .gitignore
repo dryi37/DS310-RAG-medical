@@ -1,0 +1,23 @@
+# data
+data/
+
+# vector database
+chroma_db/
+
+# cache
+router_cache.*
+
+#temp files
+*.ipynb
+
+# local
+.env
+
+# checkpoints
+checkpoints/
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
