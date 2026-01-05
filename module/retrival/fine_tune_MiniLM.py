@@ -9,6 +9,8 @@ from torch.utils.data import DataLoader
 from sentence_transformers import SentenceTransformer, InputExample, losses
 
 os.environ["WANDB_DISABLED"] = "true"
+os.environ["TRANSFORMERS_NO_TF"] = "1"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 
 def load_train_data(path: str):
@@ -105,7 +107,7 @@ def train(model_name, train_path, val_path, out_dir, batch, epochs, lr):
         model.fit(
             train_objectives=[(train_loader, train_loss)],
             epochs=1,
-            scheduler="warmupcosine",
+            scheduler=100,
             optimizer_params={"lr": lr},
             use_amp=(device == "cuda"),
             show_progress_bar=True,
