@@ -107,7 +107,7 @@ def train(model_name, train_path, val_path, out_dir, batch, epochs, lr):
         model.fit(
             train_objectives=[(train_loader, train_loss)],
             epochs=1,
-            scheduler=100,
+            warmup_steps=100, 
             optimizer_params={"lr": lr},
             use_amp=(device == "cuda"),
             show_progress_bar=True,
