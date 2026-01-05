@@ -6,6 +6,7 @@ chroma_db/
 
 # cache
 router_cache.*
+chat_ui.db
 
 #temp files
 *.ipynb
